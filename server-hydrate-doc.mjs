@@ -3,7 +3,24 @@ import * as React from "react";
 import * as ReactDOMServer from "react-dom/server";
 import Component from "./Component.mjs";
 
-function App() {
+function Comp({ promise }) {
+  if (!promise._tracked) {
+    promise._tracked = true;
+    promise.then((value) => {
+      promise._value = value;
+    });
+    throw promise;
+  }
+
+  return React.createElement("script", {
+    async: "async",
+    dangerouslySetInnerHTML: {
+      __html: `console.log('hi', ${JSON.stringify(promise._value)});`,
+    },
+  });
+}
+
+function App({ promise }) {
   return React.createElement(
     React.StrictMode,
     null,
@@ -29,21 +46,36 @@ function App() {
             __html:
               Component.toString() +
               "\n" +
+              Comp.toString() +
+              "\n" +
               App.toString() +
               "\n" +
-              "ReactDOM.hydrateRoot(document, React.createElement(App));",
+              "let promise = new Promise((r) => setTimeout(() => r('Resolved!'), 1000));" +
+              "ReactDOM.hydrateRoot(document, React.createElement(App, { promise }));",
           },
-        })
+        }),
+        React.createElement(
+          React.Suspense,
+          {
+            fallback: React.createElement("script", {
+              dangerouslySetInnerHTML: { __html: " " },
+            }),
+          },
+          React.createElement(Comp, { promise })
+        )
       )
     )
   );
 }
 
 let server = http.createServer((req, res) => {
-  let doc = ReactDOMServer.renderToString(React.createElement(App));
+  let promise = new Promise((r) => setTimeout(() => r("Resolved!"), 1000));
+  //let doc = ReactDOMServer.renderToString(React.createElement(App));
+  let stream = ReactDOMServer.renderToPipeableStream(
+    React.createElement(App, { promise })
+  );
   res.setHeader("Content-Type", "text/html");
-  res.write("<!DOCTYPE html>" + doc);
-  res.end();
+  stream.pipe(res);
 });
 
 server.listen(3000, () => {
